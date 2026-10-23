@@ -43,6 +43,34 @@ def parse_date(s):
     return None
 
 
+_fx = None
+
+
+def fixtures(code):
+    """Partite future da football-data.co.uk/fixtures.csv (se non disponibile, lista vuota)."""
+    global _fx
+    if _fx is None:
+        try:
+            req = urllib.request.Request("https://www.football-data.co.uk/fixtures.csv",
+                                         headers={"User-Agent": "calcio-stats/1.0"})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                _fx = list(csv.DictReader(io.StringIO(r.read().decode("utf-8-sig", errors="replace"))))
+        except Exception as e:
+            print("fixtures.csv non disponibile:", e)
+            _fx = []
+    out = []
+    for row in _fx:
+        if (row.get("Div") or "").strip() != code:
+            continue
+        d = parse_date(row.get("Date") or "")
+        if d and d >= datetime.date.today():
+            out.append(dict(date=d.isoformat(), time=(row.get("Time") or "").strip(),
+                            home=(row.get("HomeTeam") or "").strip(), away=(row.get("AwayTeam") or "").strip(),
+                            ref=(row.get("Referee") or "").strip() or None))
+    out.sort(key=lambda x: (x["date"], x["time"]))
+    return out
+
+
 def blank():
     return dict(p=0, w=0, d=0, l=0, gf=0, ga=0, ps=0, sf=0, sa=0, tf=0, ta=0,
                 cf=0, ca=0, fc=0, fs=0, y=0, r=0)
@@ -109,6 +137,7 @@ def build(slug, code, name):
         "campionato": name, "stagione": season_code(),
         "aggiornato": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="minutes"),
         "classifica": classifica, "ultima_giornata": matches[-per_giornata:][::-1],
+        "prossima_giornata": fixtures(code)[:per_giornata],
         "squadre": squadre, "arbitri": arbitri, "partite": matches,
     }, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"{name}: {len(matches)} partite")
