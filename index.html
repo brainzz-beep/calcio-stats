@@ -41,10 +41,19 @@ tr:last-child td{border-bottom:0}
 .res .m{grid-column:1/-1;color:var(--mute);font-size:.78rem;text-align:center}
 .note{color:var(--mute);font-size:.82rem;margin-top:.6rem}
 .err{padding:1rem;background:var(--card);border:1px solid var(--hot);border-radius:6px}
+header{position:sticky;top:0;background:var(--bg);z-index:5}
+header a.back{font-size:.85rem;font-weight:600;border:1px solid var(--line);padding:.35rem .8rem;border-radius:999px;background:var(--card)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:1rem;margin-bottom:.8rem}
+.card h3{margin:0 0 .3rem;font-size:1.05rem}.cols{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media(max-width:600px){.cols{grid-template-columns:1fr}}
+.card ul{margin:.3rem 0;padding-left:1.1rem}.f{color:var(--accent)}.w{color:var(--hot)}
+.pk{border-left:3px solid var(--accent);padding-left:.7rem;margin:.5rem 0}.pk.u{border-color:var(--cold)}
+.det{padding:.4rem .8rem .8rem;border-bottom:1px solid var(--line)}.det table{max-width:420px;margin:0 auto}.det td{text-align:center}
+select{font:inherit;padding:.3rem;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink)}
 </style>
 </head>
 <body>
-<header><a href="#/">Calcio Stats</a><span id="upd"></span></header>
+<header><a href="#/" class="back">← Campionati</a><a href="#/">Calcio Stats</a><span id="upd"></span></header>
 <main id="app"></main>
 <script>
 const LEAGUES=[["serie-a","Serie A"],["premier-league","Premier League"],["bundesliga","Bundesliga"],["la-liga","La Liga"],["ligue-1","Ligue 1"]];
@@ -67,10 +76,6 @@ async function load(slug){
 function home(){
   document.getElementById("upd").textContent="";
   app.innerHTML=`<h1>Scegli il campionato</h1><div class="picker">${LEAGUES.map(([s,n])=>`<a href="#/${s}/classifica">${n}</a>`).join("")}</div>`;
-}
-function tabs(slug,tab){
-  const T=[["classifica","Classifica e risultati"],["squadre","Analisi squadre"],["arbitri","Arbitri"]];
-  return `<nav class="tabs">${T.map(([k,n])=>`<a href="#/${slug}/${k}" class="${k===tab?"on":""}">${n}</a>`).join("")}</nav>`;
 }
 function classifica(d){
   const rows=d.classifica.map((t,i)=>`<tr><td>${i+1}. ${esc(t.squadra)}</td><td>${t.p}</td><td>${t.w}</td><td>${t.d}</td><td>${t.l}</td><td>${t.gf}:${t.ga}</td><td>${t.gf-t.ga>0?"+":""}${t.gf-t.ga}</td><td><b>${t.pts}</b></td></tr>`).join("");
@@ -97,25 +102,85 @@ function squadre(d){
   <div class="wrap"><table><tr><th data-k="nome" class="${st.sort==="nome"?"on":""}">Squadra (partite)</th>${head}</tr>${body}</table></div>
   <p class="note">F = fatti, S = subiti/concessi. Verde = miglior valore del campionato, arancione = peggiore. Clicca un’intestazione per ordinare. Con poche partite le medie sono instabili: guarda sempre il numero tra parentesi.</p>`;
 }
-function arbitri(d){
-  const rows=d.arbitri.map(a=>`<tr><td class="l">${esc(a.arbitro)}</td><td>${a.g}</td><td>${a.falli}</td><td>${a.gialli}</td><td>${a.rossi}</td></tr>`).join("");
-  return `<h2>Arbitri</h2><div class="wrap"><table><tr><th>Arbitro</th><th>Partite</th><th>Falli</th><th>Gialli</th><th>Rossi</th></tr>${rows||""}</table></div>
-  <p class="note">Medie per partita (entrambe le squadre), ordinate per gialli. Un arbitro con 1–2 partite non dice ancora nulla.</p>`;
+
+const TABS=[["prossima","Prossima giornata"],["giocate","Giocate"],["risultati","Risultati"],["classifica","Classifica"],["squadre","Squadre"]];
+function tabs(slug,tab){return `<nav class="tabs">${TABS.map(([k,n])=>`<a href="#/${slug}/${k}" class="${k===tab?"on":""}">${n}</a>`).join("")}</nav>`;}
+const lavg=(d,k)=>{const a=Object.values(d.squadre).map(t=>t.tot[k]).filter(x=>x!=null);return a.reduce((s,x)=>s+x,0)/(a.length||1)};
+const mix=(x,y)=>(x+y)/2, r1=x=>Math.round(x*10)/10, dt=m=>m.date.split("-").reverse().join("/")+(m.time?" "+m.time:"");
+function refOf(slug,m){let v=m.ref||"";try{v=localStorage.getItem(`ref:${slug}:${m.home}:${m.away}`)??v}catch(e){}return v;}
+function analyze(d,slug,m){
+  const H=d.squadre[m.home]?.tot,A=d.squadre[m.away]?.tot;
+  if(!H||!A)return null;
+  const ok=Math.min(H.ps,A.ps)>=4,picks=[];
+  const add=(name,e,b,x)=>{if(!b)return;const edge=e/b-1;if(Math.abs(edge)>=.12)picks.push({name,e:r1(e),b:r1(b),edge,over:edge>0,strong:Math.abs(edge)>=.2,m,...x});};
+  const R=d.arbitri.find(a=>a.arbitro===refOf(slug,m)),by=2*lavg(d,"y");let fac=1;
+  if(ok){
+    [[m.home,H,A],[m.away,A,H]].forEach(([n,X,Y])=>{
+      add(`Tiri ${n}`,mix(X.sf,Y.sa),lavg(d,"sf"));add(`Tiri in porta ${n}`,mix(X.tf,Y.ta),lavg(d,"tf"));
+      add(`Angoli ${n}`,mix(X.cf,Y.ca),lavg(d,"cf"));add(`Gol ${n}`,mix(X.gfm,Y.gam),lavg(d,"gfm"));});
+    add("Falli totali del match",mix(H.fc,A.fs)+mix(A.fc,H.fs),2*lavg(d,"fc"));
+    let ye=H.y+A.y;if(R){const w=R.g/(R.g+3);fac=1+(R.gialli/by-1)*w;ye*=fac;}
+    add("Ammonizioni totali del match",ye,by,{ref:R});
+  }
+  picks.sort((a,b)=>Math.abs(b.edge)-Math.abs(a.edge));
+  return{H,A,ok,picks,R,fac};
+}
+const pickLi=(p,full)=>`<div class="pk ${p.over?"":"u"}"><b>${p.over?"Over":"Under"} · ${esc(p.name)}</b>${p.strong?" · segnale forte":""}<br><small>${full?esc(p.m.home)+"–"+esc(p.m.away)+" · ":""}stima ${p.e} contro media campionato ${p.b} (${p.edge>0?"+":""}${Math.round(p.edge*100)}%). Confronta con la linea del bookmaker.</small></div>`;
+const SW=[["gfm","attacco prolifico","attacco poco prolifico",1],["gam","difesa solida","difesa che subisce molto",-1],["sf","tira molto","tira poco",1],["sa","concede pochi tiri","concede molti tiri",-1],["tf","molti tiri in porta","pochi tiri in porta",1],["ta","concede pochi tiri in porta","concede molti tiri in porta",-1],["cf","molti angoli","pochi angoli",1],["ca","concede pochi angoli","concede molti angoli",-1]];
+function sw(d,team){const nm=Object.keys(d.squadre),F=[],W=[];
+  SW.forEach(([k,s,w,dir])=>{const v=nm.filter(n=>d.squadre[n].tot[k]!=null).sort((a,b)=>(d.squadre[b].tot[k]-d.squadre[a].tot[k])*dir),i=v.indexOf(team);
+    if(i<0)return;if(i<3)F.push(`${s} (${i+1}°)`);else if(i>=v.length-3)W.push(`${w} (${v.length-i}° peggiore)`);});
+  return{F,W};}
+const forma=(d,t)=>d.partite.filter(m=>m.home===t||m.away===t).slice(-5).map(m=>{const g=m.home===t?m.hg-m.ag:m.ag-m.hg;return g>0?"V":g<0?"P":"N"}).join(" ")||"–";
+const empty=t=>`<div class="err">${t}</div>`;
+function prossima(d,slug){
+  if(!d.prossima_giornata?.length)return empty("Calendario non disponibile: la fonte non ha partite future per questo campionato. Riprova dopo il prossimo aggiornamento.");
+  return d.prossima_giornata.map(m=>{const a=analyze(d,slug,m);if(!a)return`<div class="card"><h3>${esc(m.home)} – ${esc(m.away)}</h3>Squadre non trovate nei dati.</div>`;
+    const sh=sw(d,m.home),sa=sw(d,m.away),li=x=>x.length?x.map(t=>`<li>${t}</li>`).join(""):"<li>nessun dato estremo</li>";
+    return `<div class="card"><h3>${esc(m.home)} – ${esc(m.away)}</h3><small>${dt(m)}</small>
+    <div class="cols"><div><b>${esc(m.home)}</b> · forma ${forma(d,m.home)}<ul class="f">${li(sh.F)}</ul><ul class="w">${li(sh.W)}</ul></div>
+    <div><b>${esc(m.away)}</b> · forma ${forma(d,m.away)}<ul class="f">${li(sa.F)}</ul><ul class="w">${li(sa.W)}</ul></div></div>
+    <b>Come si incontrano</b>${a.ok?(a.picks.filter(p=>!p.name.startsWith("Ammon")).slice(0,3).map(p=>pickLi(p)).join("")||"<p class='note'>Nessuno scontro netto tra punti di forza e di debolezza.</p>"):"<p class='note'>Poche partite per un confronto affidabile.</p>"}</div>`;}).join("")+`<p class="note">Elenco verde = punti di forza (primi 3 del campionato), arancione = punti deboli (ultimi 3). Forma: ultime 5 partite, dalla più vecchia.</p>`;
+}
+function giocate(d,slug){
+  if(!d.prossima_giornata?.length)return empty("Calendario non disponibile: senza le prossime partite non posso calcolare le giocate.");
+  const all=d.prossima_giornata.map(m=>({m,a:analyze(d,slug,m)})).filter(x=>x.a);
+  const top=all.flatMap(x=>x.a.picks).slice().sort((a,b)=>Math.abs(b.edge)-Math.abs(a.edge)).slice(0,8);
+  const refs=[...d.arbitri].sort((a,b)=>a.arbitro.localeCompare(b.arbitro));
+  const cards=all.map(({m,a})=>{
+    const cur=refOf(slug,m),sel=`<select data-ref="${esc(m.home)}|${esc(m.away)}"><option value="">Arbitro non ancora designato</option>${refs.map(r=>`<option ${r.arbitro===cur?"selected":""}>${esc(r.arbitro)}</option>`).join("")}</select>`;
+    let note="";
+    if(a.R){const hi=a.H.y>=a.A.y?m.home:m.away;
+      note=`<p>Arbitro <b>${esc(a.R.arbitro)}</b>: ${a.R.gialli} gialli a partita in ${a.R.g} partite (media campionato ${r1(2*lavg(d,"y"))}).`+
+      (a.fac>=1.12?` <b class="w">Arbitro severo</b>: valuta Over ammonizioni sul match; la squadra che ne prende di più è ${esc(hi)}.`:a.fac<=.88?` <b class="f">Arbitro di manica larga</b>: valuta Under ammonizioni.`:" Nessuna spinta netta sulle ammonizioni.")+
+      ` <small>Le ammonizioni dei singoli giocatori richiedono dati per giocatore, che non ho ancora.</small></p>`;}
+    else note=`<p class="note">Scegli l’arbitro per far entrare le ammonizioni nel calcolo (la designazione esce un paio di giorni prima).</p>`;
+    return `<div class="card"><h3>${esc(m.home)} – ${esc(m.away)}</h3><small>${dt(m)}</small><p>${sel}</p>${note}${a.ok?(a.picks.map(p=>pickLi(p)).join("")||"<p class='note'>Nessuna giocata con scarto netto.</p>"):"<p class='note'>Meno di 4 partite con statistiche per una delle squadre: nessuna giocata.</p>"}</div>`;}).join("");
+  return `<h2>Le giocate più nette della giornata</h2><div class="card">${top.map(p=>pickLi(p,1)).join("")||"Nessuna giocata con scarto netto."}</div><h2>Partita per partita</h2>${cards}
+  <p class="note">La stima mescola quanto la squadra fa di solito e quanto l’avversaria concede, confrontata con la media del campionato. Sono tendenze statistiche, non probabilità: contano solo se la linea del bookmaker è più bassa (Over) o più alta (Under) della stima. L’effetto dell’arbitro è attenuato quando ha pochi match.</p>`;
+}
+function risultati(d){
+  if(!d.ultima_giornata.length)return empty("Nessuna partita ancora giocata.");
+  const row=(l,a,b)=>`<tr><td>${a??"–"}</td><td>${l}</td><td>${b??"–"}</td></tr>`;
+  return `<div class="wrap">${d.ultima_giornata.map(m=>`<div class="res" data-open style="cursor:pointer"><span class="h">${esc(m.home)}</span><span class="s">${m.hg} – ${m.ag}</span><span>${esc(m.away)}</span><span class="m">${dt(m)} · tocca per le statistiche</span></div>
+  <div class="det" hidden><table>${row("Tiri",m.hs,m.as_)}${row("Tiri in porta",m.hst,m.ast)}${row("Angoli",m.hc,m.ac)}${row("Falli",m.hf,m.af)}${row("Gialli",m.hy,m.ay)}${row("Rossi",m.hr,m.ar)}</table><p class="note" style="text-align:center">Arbitro: ${m.ref?esc(m.ref):"non indicato"}</p></div>`).join("")}</div>`;
 }
 async function route(){
-  const [,slug,tab="classifica"]=location.hash.split("/");
+  const [,slug,tab="prossima"]=location.hash.split("/");
   if(!slug)return home();
   const lg=LEAGUES.find(l=>l[0]===slug);if(!lg)return home();
   app.innerHTML=`<h1>${lg[1]}</h1>${tabs(slug,tab)}<p class="note">Caricamento…</p>`;
   try{
     const d=await load(slug);
     document.getElementById("upd").textContent=`Stagione ${d.stagione.slice(0,2)}/${d.stagione.slice(2)} · aggiornato ${d.aggiornato.replace("T"," ").slice(0,16)} UTC`;
-    const view={classifica,squadre,arbitri}[tab]||classifica;
-    app.innerHTML=`<h1>${lg[1]}</h1>${tabs(slug,tab)}${view(d)}`;
+    const view={prossima,giocate,risultati,classifica,squadre}[tab]||prossima;
+    app.innerHTML=`<h1>${lg[1]}</h1>${tabs(slug,tab)}${view(d,slug)}`;
     app.querySelectorAll("th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;if(st.sort===k)st.dir*=-1;else{st.sort=k;st.dir=k==="nome"?-1:(COLS.find(c=>c[0]===k)[3]==="low"?1:-1);}route();});
     app.querySelectorAll("button[data-v]").forEach(b=>b.onclick=()=>{st.venue=b.dataset.v;route();});
+    app.querySelectorAll("[data-open]").forEach(el=>el.onclick=()=>{el.nextElementSibling.hidden=!el.nextElementSibling.hidden;});
+    app.querySelectorAll("select[data-ref]").forEach(s=>s.onchange=()=>{try{localStorage.setItem(`ref:${slug}:${s.dataset.ref.replace("|",":")}`,s.value)}catch(e){}route();});
   }catch(e){
-    app.innerHTML=`<h1>${lg[1]}</h1>${tabs(slug,tab)}<div class="err">Dati non disponibili per questo campionato. Lancia l’azione “Aggiorna dati” su GitHub (o <code>python scripts/update_data.py</code>) e ricarica.</div>`;
+    app.innerHTML=`<h1>${lg[1]}</h1>${tabs(slug,tab)}<div class="err">Dati non disponibili per questo campionato. Lancia l’azione “Aggiorna dati” su GitHub e ricarica.</div>`;
   }
 }
 addEventListener("hashchange",route);route();
