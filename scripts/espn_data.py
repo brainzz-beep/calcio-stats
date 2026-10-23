@@ -15,7 +15,8 @@ ALIAS = {"internazionale": "Inter", "ac milan": "Milan", "hellas verona": "Veron
          "wolverhampton wanderers": "Wolves", "tottenham hotspur": "Tottenham", "newcastle united": "Newcastle",
          "real sociedad": "Sociedad", "real betis": "Betis", "celta vigo": "Celta", "rayo vallecano": "Vallecano",
          "bayer leverkusen": "Leverkusen", "borussia dortmund": "Dortmund", "eintracht frankfurt": "Ein Frankfurt",
-         "fc cologne": "FC Koln", "koln": "FC Koln", "olympique marseille": "Marseille", "olympique lyonnais": "Lyon"}
+         "fc cologne": "FC Koln", "koln": "FC Koln", "olympique marseille": "Marseille", "olympique lyonnais": "Lyon", "brighton hove albion": "Brighton", "deportivo": "La Coruna",
+         "espanyol": "Espanol", "stade rennais": "Rennes"}
 
 
 def get(url):
