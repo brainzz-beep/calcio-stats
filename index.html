@@ -65,6 +65,7 @@ details.card>summary{cursor:pointer;font:700 1.3rem var(--cond)}
 .tl{margin:.6rem 0}.tl .lane{position:relative;height:1.7rem}.tl i{position:absolute;transform:translateX(-50%);font-style:normal;cursor:default}
 .tl .axis{display:flex;justify-content:space-between;border-top:2px solid var(--line);font-size:.7rem;color:var(--mute)}
 :focus-visible{outline:3px solid var(--yel);outline-offset:2px}
+details.sub{border-top:1px solid var(--line);padding:.45rem 0}details.sub>summary{cursor:pointer;font:700 1.1rem var(--cond)}details.sub>summary small{color:var(--mute);font:400 .8rem 'Barlow',sans-serif}
 </style>
 </head>
 <body>
@@ -156,7 +157,7 @@ function prossima(d,slug){
     <div><b>${esc(m.away)}</b> · forma ${forma(d,m.away)}<ul class="f">${li(sa.F)}</ul><ul class="w">${li(sa.W)}</ul></div></div>
     ${quick(d,m)}<b>Come si incontrano</b>${a.ok?(a.picks.filter(p=>!p.name.startsWith("Ammon")).slice(0,3).map(p=>pickLi(p)).join("")||"<p class='note'>Nessuno scontro netto tra punti di forza e di debolezza.</p>"):"<p class='note'>Poche partite per un confronto affidabile.</p>"}</div>`;}).join("")+`<p class="note">Elenco verde = punti di forza (primi 3 del campionato), arancione = punti deboli (ultimi 3). Forma: ultime 5 partite, dalla più vecchia.</p>`;
 }
-function giocate(d,slug){
+function giocateOld(d,slug){
   if(!d.prossima_giornata?.length)return empty(diag(d));
   const all=d.prossima_giornata.map(m=>({m,a:analyze(d,slug,m)})).filter(x=>x.a);
   const top=all.flatMap(x=>x.a.picks).slice().sort((a,b)=>Math.abs(b.edge)-Math.abs(a.edge)).slice(0,8);
@@ -259,8 +260,8 @@ function pickLi(p,full){
   const pr=p.over?1-pois(k,p.e):pois(k,p.e);
   return `<div class="pk ${p.over?"":"u"}"><b>${esc(w)}: ${p.over?`${k+1} o più`:`${k} o meno`} ${u}</b> <small>(${p.over?"Over":"Under"} ${fm(L)})</small>${p.strong?" · <span class='chip'>segnale forte</span>":""}<br><small>${full?esc(p.m.home)+"–"+esc(p.m.away)+" · ":""}Perché: la stima è ${fm(p.e)} contro una media di ${fm(p.b)} del campionato. Probabilità stimata ${Math.round(pr*100)}%: giocala solo se la quota è almeno <b>${fm(1/pr,2)}</b>.</small></div>`;
 }
-function players(d,m,a){
-  const G=d.espn&&d.espn.giocatori;if(!G||!G.length)return"";
+function playerList(d,m,a){
+  const G=d.espn&&d.espn.giocatori;if(!G||!G.length)return[];
   const T=t=>d.squadre[t]&&d.squadre[t].tot,cl=x=>Math.min(1.6,Math.max(.6,x||1)),R=[];
   const best=(l,lam,mins)=>{let k=null;for(const q of mins){if(1-pois(q-1,lam)>=0.5)k=q}return k;};
   [[m.home,m.away],[m.away,m.home]].forEach(([me,op])=>{
@@ -272,16 +273,14 @@ function players(d,m,a){
       l=p.a/p.p*fG;pr=1-Math.exp(-l);if(pr>=.15)add("Assist","fa almeno 1 assist",pr,`${p.a} assist in ${p.p} partite`);
       l=p.sot/p.p*fT;pr=1-Math.exp(-l);if(pr>=.55)add("Tiri in porta","almeno 1 tiro in porta",pr,`${r1(p.sot/p.p)} tiri in porta a partita${fT>1.1?", contro una difesa che ne concede molti":""}`);
       l=p.sh/p.p*fS;let k=best(0,l,[2,3,4]);if(k)add("Tiri",`almeno ${k} tiri`,1-pois(k-1,l),`${r1(p.sh/p.p)} tiri a partita${fS>1.1?", contro una difesa che ne concede molti":""}`);
-      l=p.fc/p.p;k=best(0,l,[1,2,3]);if(k)add("Falli commessi",`commette almeno ${k} falli`,1-pois(k-1,l),`${r1(l)} falli fatti a partita`);
-      l=p.fs/p.p*fF;k=best(0,l,[1,2,3]);if(k)add("Falli subiti",`subisce almeno ${k} falli`,1-pois(k-1,l),`${r1(p.fs/p.p)} falli subiti a partita`);
+      l=p.fc/p.p;k=best(0,l,[1,2,3]);if(k)add("Falli commessi",`commette almeno ${k} ${k===1?"fallo":"falli"}`,1-pois(k-1,l),`${r1(l)} falli fatti a partita`);
+      l=p.fs/p.p*fF;k=best(0,l,[1,2,3]);if(k)add("Falli subiti",`subisce almeno ${k} ${k===1?"fallo":"falli"}`,1-pois(k-1,l),`${r1(p.fs/p.p)} falli subiti a partita`);
       l=p.y/p.p*(a.fac||1);pr=1-Math.exp(-l);if(pr>=.2)add("Cartellino","viene ammonito",pr,`${p.y} gialli in ${p.p} partite${a.fac>=1.12?", con un arbitro severo":""}`);
     });
   });
-  const LIM={"Marcatore":3,"Assist":2,"Tiri in porta":2,"Tiri":2,"Falli commessi":2,"Falli subiti":2,"Cartellino":3};
-  const html=Object.keys(LIM).map(c=>{const L=R.filter(x=>x.c===c).sort((x,y)=>y.pr-x.pr).slice(0,LIM[c]);
-    return L.length?`<small><b>${c}</b></small>`+L.map(x=>`<div class="pk"><b>${esc(x.n)}</b> (${esc(x.sq)}): ${x.txt}<br><small>Probabilità stimata ${Math.round(x.pr*100)}% · giocala solo se la quota è almeno <b>${fm(1/x.pr,2)}</b> · ${esc(x.why)}</small></div>`).join(""):"";}).join("");
-  return html?`<h4 style="margin:.9rem 0 .2rem">Giocate sui giocatori</h4>${html}`:"";
+  return R;
 }
+
 
 const conv=(a,b)=>{const o=Array(a.length+b.length-1).fill(0);a.forEach((x,i)=>b.forEach((y,j)=>o[i+j]+=x*y));return o};
 function model(d,m){
@@ -316,14 +315,41 @@ function model(d,m){
   return{lh,la,mk,top,r:[Pr(E["1"]),Pr(E["X"]),Pr(E["2"])].map(x=>Math.round(x*100))};
 }
 function quick(d,m){const M=model(d,m);if(!M)return"";return `<p><small>Gol attesi: ${esc(m.home)} ${fm(M.lh)} – ${fm(M.la)} ${esc(m.away)} · probabilità 1 ${M.r[0]}% · X ${M.r[1]}% · 2 ${M.r[2]}%</small></p>`;}
-function mercati(d,m){
-  const M=model(d,m);if(!M)return"";
-  const seen={},sel=[];M.mk.filter(x=>x.pr>=.5&&x.pr<=.8).sort((a,b)=>b.pr-a.pr).forEach(x=>{if(!seen[x.fam]){seen[x.fam]=1;sel.push(x)}});
-  const fams=[...new Set(M.mk.map(x=>x.fam))];
-  const all=fams.map(f=>`<b>${f}</b><table>${M.mk.filter(x=>x.fam===f).sort((a,b)=>b.pr-a.pr).map(x=>`<tr><td class="l">${esc(x.label)}</td><td>${Math.round(x.pr*100)}%</td><td>${fm(1/x.pr,2)}</td></tr>`).join("")}</table>`).join("");
-  return `<h4 style="margin:.9rem 0 .2rem">Esito, multigol e combinate</h4><p><small>Gol attesi: ${esc(m.home)} ${fm(M.lh)} – ${fm(M.la)} ${esc(m.away)} · 1 ${M.r[0]}% · X ${M.r[1]}% · 2 ${M.r[2]}% · risultati più probabili: ${M.top.join(", ")}</small></p>
-  ${sel.slice(0,6).map(x=>`<div class="pk"><b>${esc(x.label)}</b> <small>(${x.fam})</small><br><small>Probabilità stimata ${Math.round(x.pr*100)}% · giocala solo se la quota è almeno <b>${fm(1/x.pr,2)}</b></small></div>`).join("")||"<p class='note'>Nessun mercato nella fascia 50–80%.</p>"}
-  <details><summary><small>Tutti i mercati (${M.mk.length}): probabilità e quota minima</small></summary><div class="wrap" style="padding:.5rem"><table><tr><th class="l">Mercato</th><th>Prob.</th><th>Quota min.</th></tr></table>${all}</div></details>`;
+function pickInfo(p){const[w,u]=whoUnit(p.name),L=Math.max(0.5,p.over?Math.floor(p.e*0.85-0.5)+0.5:Math.ceil(p.e*1.15-0.5)+0.5),k=Math.floor(L),pr=p.over?1-pois(k,p.e):pois(k,p.e);
+  return{pr,label:`${w}: ${p.over?`${k+1} o più`:`${k} o meno`} ${u} (${p.over?"Over":"Under"} ${fm(L)})`};}
+const lineHtml=(label,pr,sub,why)=>`<div class="pk"><b>${label}</b>${sub?` <small>(${sub})</small>`:""}<br><small>Probabilità stimata ${Math.round(pr*100)}% · giocala solo se la quota è almeno <b>${fm(1/pr,2)}</b>${why?" · "+why:""}</small></div>`;
+const sec=(t,n,inner)=>n?`<details class="sub"><summary>${t} <small>(${n})</small></summary>${inner}</details>`:"";
+const FAMS=["Esito 1X2","Doppia chance","Over/Under e GG/NG","1X2 + gol","Doppia chance + gol","Multigol","Multigol squadra","Multigol tempo","Esito per tempo","Almeno un tempo"];
+const PCAT=[["Marcatore","Marcatori"],["Assist","Assist"],["Tiri in porta","Giocatori: tiri in porta"],["Tiri","Giocatori: tiri"],["Falli commessi","Giocatori: falli commessi"],["Falli subiti","Giocatori: falli subiti"],["Cartellino","Giocatori: cartellini"]];
+function giocate(d,slug){
+  if(!d.prossima_giornata?.length)return empty(diag(d));
+  const refs=[...d.arbitri].sort((a,b)=>a.arbitro.localeCompare(b.arbitro));
+  const cards=d.prossima_giornata.map(m=>{
+    const a=analyze(d,slug,m);if(!a)return`<div class="card"><h3>${esc(m.home)} – ${esc(m.away)}</h3>Squadre non trovate nei dati.</div>`;
+    const M=model(d,m),cur=refOf(slug,m);
+    const sel=`<select data-ref="${esc(m.home)}|${esc(m.away)}"><option value="">Arbitro non ancora designato</option>${refs.map(r=>`<option ${r.arbitro===cur?"selected":""}>${esc(r.arbitro)}</option>`).join("")}</select>`;
+    let note="";
+    if(a.R){const hi=a.H.y>=a.A.y?m.home:m.away;
+      note=`<p>Arbitro <b>${esc(a.R.arbitro)}</b>: ${a.R.gialli} gialli a partita in ${a.R.g} partite (media campionato ${r1(2*lavg(d,"y"))}).`+
+      (a.fac>=1.12?` <b class="w">Arbitro severo</b>: valuta Over ammonizioni sul match; la squadra che ne prende di più è ${esc(hi)}.`:a.fac<=.88?` <b class="f">Arbitro di manica larga</b>: valuta Under ammonizioni.`:" Nessuna spinta netta sulle ammonizioni.")+`</p>`;}
+    else note=`<p class="note">Scegli l’arbitro per far entrare le ammonizioni nel calcolo (la designazione esce un paio di giorni prima).</p>`;
+    const PL=playerList(d,m,a),cand=[];
+    if(M)M.mk.forEach(x=>cand.push({fam:x.fam,label:esc(x.label),pr:x.pr}));
+    if(a.ok)a.picks.forEach(p=>{const i=pickInfo(p);cand.push({fam:"Squadre",label:esc(i.label),pr:i.pr})});
+    PL.forEach(x=>cand.push({fam:"G:"+x.c,label:`${esc(x.n)} (${esc(x.sq)}): ${x.txt}`,pr:x.pr,why:x.why}));
+    const cnt={},best=cand.filter(x=>x.pr>=.5&&x.pr<=.8).sort((x,y)=>y.pr-x.pr).filter(x=>(cnt[x.fam]=(cnt[x.fam]||0)+1)<=2).slice(0,6);
+    const mk=M?FAMS.map(f=>{const L=M.mk.filter(x=>x.fam===f).sort((x,y)=>y.pr-x.pr);
+      return sec(f,L.length,`<div class="wrap" style="margin:.4rem 0"><table><tr><th class="l">Mercato</th><th>Prob.</th><th>Quota min.</th></tr>${L.map(x=>`<tr><td class="l">${esc(x.label)}</td><td>${Math.round(x.pr*100)}%</td><td>${fm(1/x.pr,2)}</td></tr>`).join("")}</table></div>`)}).join(""):"";
+    const tp=a.ok?a.picks:[],isM=p=>/^(Falli|Ammon)/.test(p.name);
+    const teams=sec("Squadre: tiri, angoli e gol",tp.filter(p=>!isM(p)).length,tp.filter(p=>!isM(p)).map(p=>{const i=pickInfo(p);return lineHtml(esc(i.label),i.pr,"",`stima ${fm(p.e)} contro media ${fm(p.b)}`)}).join(""));
+    const fa=sec("Falli e ammonizioni del match",tp.filter(isM).length,tp.filter(isM).map(p=>{const i=pickInfo(p);return lineHtml(esc(i.label),i.pr,"",`stima ${fm(p.e)} contro media ${fm(p.b)}`)}).join(""));
+    const pls=PCAT.map(([c,t])=>{const L=PL.filter(x=>x.c===c).sort((x,y)=>y.pr-x.pr).slice(0,6);return sec(t,L.length,L.map(x=>lineHtml(`${esc(x.n)} (${esc(x.sq)}): ${x.txt}`,x.pr,"",esc(x.why))).join(""));}).join("");
+    return `<div class="card"><h3>${esc(m.home)} – ${esc(m.away)}</h3><small>${dt(m)}</small><p>${sel}</p>${note}
+    ${M?`<p><small>Gol attesi: ${esc(m.home)} ${fm(M.lh)} – ${fm(M.la)} ${esc(m.away)} · 1 ${M.r[0]}% · X ${M.r[1]}% · 2 ${M.r[2]}% · risultati più probabili: ${M.top.join(", ")}</small></p>`:""}
+    <h4 style="margin:.9rem 0 .2rem">Migliori giocate</h4>${best.map(x=>lineHtml(x.label,x.pr,"",x.why?esc(x.why):"")).join("")||"<p class='note'>Nessuna giocata nella fascia 50–80% di probabilità.</p>"}
+    <div class="subs"><p class="note" style="margin:.8rem 0 .2rem">Tutte le altre giocate, per tipo (tocca per aprire):</p>${mk}${teams}${fa}${pls}</div></div>`;}).join("");
+  return `<p class="note" style="font-size:.95rem"><b>Come si legge.</b> Per ogni partita trovi in alto le migliori giocate, poi le altre divise per tipo da aprire con un tocco. Cerca la stessa giocata sul sito del bookmaker: se la quota è uguale o più alta di quella minima indicata conviene, se è più bassa lascia perdere.</p>${cards}
+  <p class="note">Le migliori giocate sono quelle con probabilità stimata tra il 50% e l’80%: sopra l’80% le quote sono troppo basse per contare. Le probabilità vengono da un modello statistico semplice sui dati della stagione: sono un’indicazione, non una certezza, e con poche partite sono molto incerte. Per i giocatori contano solo quelli che giocano spesso (almeno 4 presenze e il 60% delle partite della squadra).</p>`;
 }
 function bindExtra(){
   app.querySelectorAll("th[data-pk]").forEach(th=>th.onclick=()=>{st.psort=th.dataset.pk;route();});
