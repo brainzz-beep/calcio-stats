@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calcio Stats</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef2f4;--ink:#12202b;--mute:#5d6d78;--card:#fff;--line:#d5dde2;--accent:#0f7a4d;--hot:#d9480f;--cold:#1c6bb0}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1a22;--ink:#e8eef2;--mute:#8fa1ad;--card:#16262f;--line:#2a3d49;--accent:#3ecf8e;--hot:#ff8a5c;--cold:#6cb6ff}}
+*{box-sizing:border-box}
+html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Bricolage Grotesque",system-ui,sans-serif;line-height:1.45}
+header{display:flex;align-items:baseline;gap:1rem;padding:1rem 1.25rem;border-bottom:1px solid var(--line);flex-wrap:wrap}
+header a{color:var(--ink);text-decoration:none;font-weight:800;font-size:1.25rem}
+header span{color:var(--mute);font-size:.85rem}
+main{max-width:1100px;margin:0 auto;padding:1.25rem}
+h1{font-size:clamp(2rem,6vw,3.4rem);font-weight:800;margin:.5rem 0 1.5rem;letter-spacing:-.02em}
+h2{font-size:1.1rem;margin:1.75rem 0 .6rem}
+.picker{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.75rem}
+.picker a{display:block;padding:1.4rem 1.2rem;background:var(--card);border:1px solid var(--line);border-radius:6px;color:var(--ink);text-decoration:none;font-weight:600;font-size:1.15rem}
+.picker a:hover,.picker a:focus-visible{border-color:var(--accent);outline:none}
+nav.tabs{display:flex;gap:.4rem;flex-wrap:wrap;margin:.5rem 0 1rem}
+nav.tabs a,.seg button{padding:.45rem .9rem;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;text-decoration:none;font:inherit;font-size:.9rem;cursor:pointer}
+nav.tabs a.on,.seg button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.seg{display:flex;gap:.4rem;margin:.5rem 0}
+.wrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;font-size:.9rem;font-variant-numeric:tabular-nums}
+th,td{padding:.5rem .7rem;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child,th.l,td.l{text-align:left}
+th{font-weight:600;color:var(--mute);cursor:pointer;user-select:none}
+th.on{color:var(--ink)}
+tr:last-child td{border-bottom:0}
+.best{color:var(--accent);font-weight:800}.worst{color:var(--hot);font-weight:800}
+.leaders{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.6rem}
+.leaders div{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:.7rem .85rem}
+.leaders small{display:block;color:var(--mute)}.leaders b{font-size:1.05rem}
+.res{display:grid;grid-template-columns:1fr auto 1fr;gap:.75rem;padding:.55rem .8rem;border-bottom:1px solid var(--line);align-items:center}
+.res:last-child{border-bottom:0}.res .s{font-weight:800;font-size:1.05rem}.res .h{text-align:right}
+.res .m{grid-column:1/-1;color:var(--mute);font-size:.78rem;text-align:center}
+.note{color:var(--mute);font-size:.82rem;margin-top:.6rem}
+.err{padding:1rem;background:var(--card);border:1px solid var(--hot);border-radius:6px}
+</style>
+</head>
+<body>
+<header><a href="#/">Calcio Stats</a><span id="upd"></span></header>
+<main id="app"></main>
+<script>
+const LEAGUES=[["serie-a","Serie A"],["premier-league","Premier League"],["bundesliga","Bundesliga"],["la-liga","La Liga"],["ligue-1","Ligue 1"]];
+// metrica: [chiave, intestazione, descrizione, meglio = "high"|"low"|null]
+const COLS=[["gfm","Gol F","Gol fatti a partita","high"],["gam","Gol S","Gol subiti a partita","low"],
+["sf","Tiri F","Tiri fatti a partita","high"],["sa","Tiri S","Tiri concessi a partita","low"],
+["tf","In porta F","Tiri in porta fatti","high"],["ta","In porta S","Tiri in porta concessi","low"],
+["cf","Angoli F","Calci d’angolo fatti","high"],["ca","Angoli S","Calci d’angolo concessi","low"],
+["fc","Falli F","Falli fatti","low"],["fs","Falli S","Falli subiti","high"],
+["y","Gialli","Gialli presi a partita","low"],["r","Rossi","Rossi presi a partita","low"]];
+const app=document.getElementById("app");
+const st={sort:"gfm",dir:-1,venue:"tot",cache:{}};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const f=v=>v==null?"–":v;
+
+async function load(slug){
+  if(!st.cache[slug]){const r=await fetch(`data/${slug}.json`);if(!r.ok)throw new Error("Dati non disponibili");st.cache[slug]=await r.json();}
+  return st.cache[slug];
+}
+function home(){
+  document.getElementById("upd").textContent="";
+  app.innerHTML=`<h1>Scegli il campionato</h1><div class="picker">${LEAGUES.map(([s,n])=>`<a href="#/${s}/classifica">${n}</a>`).join("")}</div>`;
+}
+function tabs(slug,tab){
+  const T=[["classifica","Classifica e risultati"],["squadre","Analisi squadre"],["arbitri","Arbitri"]];
+  return `<nav class="tabs">${T.map(([k,n])=>`<a href="#/${slug}/${k}" class="${k===tab?"on":""}">${n}</a>`).join("")}</nav>`;
+}
+function classifica(d){
+  const rows=d.classifica.map((t,i)=>`<tr><td>${i+1}. ${esc(t.squadra)}</td><td>${t.p}</td><td>${t.w}</td><td>${t.d}</td><td>${t.l}</td><td>${t.gf}:${t.ga}</td><td>${t.gf-t.ga>0?"+":""}${t.gf-t.ga}</td><td><b>${t.pts}</b></td></tr>`).join("");
+  const res=d.ultima_giornata.map(m=>`<div class="res"><span class="h">${esc(m.home)}</span><span class="s">${m.hg} – ${m.ag}</span><span>${esc(m.away)}</span><span class="m">${m.date.split("-").reverse().join("/")}${m.ref?` · arbitro ${esc(m.ref)}`:""}${m.hc!=null?` · angoli ${m.hc}-${m.ac} · tiri ${m.hs}-${m.as_}`:""}</span></div>`).join("");
+  return `<h2>Classifica</h2><div class="wrap"><table><tr><th>Squadra</th><th>G</th><th>V</th><th>N</th><th>P</th><th>Gol</th><th>DR</th><th>Pt</th></tr>${rows}</table></div>
+  <h2>Ultima giornata giocata</h2><div class="wrap">${res||"<p class='note' style='padding:1rem'>Nessuna partita ancora giocata.</p>"}</div>
+  <p class="note">Le partite mostrate sono le ultime ${d.ultima_giornata.length} disputate.</p>`;
+}
+function squadre(d){
+  const names=Object.keys(d.squadre);
+  const val=(n,k)=>d.squadre[n][st.venue][k];
+  const leaders=COLS.filter(c=>c[3]).map(([k,h,desc,best])=>{
+    const ok=names.filter(n=>val(n,k)!=null);if(!ok.length)return"";
+    ok.sort((a,b)=>best==="high"?val(b,k)-val(a,k):val(a,k)-val(b,k));
+    return `<div><small>${desc}: la migliore</small><b>${esc(ok[0])}</b> ${val(ok[0],k)}</div>`;}).join("");
+  const sorted=[...names].sort((a,b)=>st.sort==="nome"?a.localeCompare(b)*-st.dir:((val(a,st.sort)??-1)-(val(b,st.sort)??-1))*st.dir);
+  const rank={};COLS.forEach(([k,,,best])=>{if(!best)return;const v=names.map(n=>val(n,k)).filter(x=>x!=null);rank[k]=[Math.min(...v),Math.max(...v)];});
+  const cls=(k,v,best)=>{if(v==null||!best)return"";const[mn,mx]=rank[k];if(mn===mx)return"";const g=best==="high"?mx:mn,b=best==="high"?mn:mx;return v===g?"best":v===b?"worst":"";};
+  const head=COLS.map(([k,h,desc])=>`<th data-k="${k}" title="${desc}" class="${st.sort===k?"on":""}">${h}${st.sort===k?(st.dir<0?" ↓":" ↑"):""}</th>`).join("");
+  const body=sorted.map(n=>`<tr><td>${esc(n)} <small style="color:var(--mute)">(${d.squadre[n][st.venue].p})</small></td>${COLS.map(([k,,,best])=>{const v=val(n,k);return `<td class="${cls(k,v,best)}">${f(v)}</td>`}).join("")}</tr>`).join("");
+  const V=[["tot","Totale"],["casa","Casa"],["fuori","Fuori"]];
+  return `<h2>Le migliori del campionato</h2><div class="leaders">${leaders}</div>
+  <h2>Medie a partita</h2><div class="seg">${V.map(([k,n])=>`<button data-v="${k}" class="${st.venue===k?"on":""}">${n}</button>`).join("")}</div>
+  <div class="wrap"><table><tr><th data-k="nome" class="${st.sort==="nome"?"on":""}">Squadra (partite)</th>${head}</tr>${body}</table></div>
+  <p class="note">F = fatti, S = subiti/concessi. Verde = miglior valore del campionato, arancione = peggiore. Clicca un’intestazione per ordinare. Con poche partite le medie sono instabili: guarda sempre il numero tra parentesi.</p>`;
+}
+function arbitri(d){
+  const rows=d.arbitri.map(a=>`<tr><td class="l">${esc(a.arbitro)}</td><td>${a.g}</td><td>${a.falli}</td><td>${a.gialli}</td><td>${a.rossi}</td></tr>`).join("");
+  return `<h2>Arbitri</h2><div class="wrap"><table><tr><th>Arbitro</th><th>Partite</th><th>Falli</th><th>Gialli</th><th>Rossi</th></tr>${rows||""}</table></div>
+  <p class="note">Medie per partita (entrambe le squadre), ordinate per gialli. Un arbitro con 1–2 partite non dice ancora nulla.</p>`;
+}
+async function route(){
+  const [,slug,tab="classifica"]=location.hash.split("/");
+  if(!slug)return home();
+  const lg=LEAGUES.find(l=>l[0]===slug);if(!lg)return home();
+  app.innerHTML=`<h1>${lg[1]}</h1>${tabs(slug,tab)}<p class="note">Caricamento…</p>`;
+  try{
+    const d=await load(slug);
+    document.getElementById("upd").textContent=`Stagione ${d.stagione.slice(0,2)}/${d.stagione.slice(2)} · aggiornato ${d.aggiornato.replace("T"," ").slice(0,16)} UTC`;
+    const view={classifica,squadre,arbitri}[tab]||classifica;
+    app.innerHTML=`<h1>${lg[1]}</h1>${tabs(slug,tab)}${view(d)}`;
+    app.querySelectorAll("th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;if(st.sort===k)st.dir*=-1;else{st.sort=k;st.dir=k==="nome"?-1:(COLS.find(c=>c[0]===k)[3]==="low"?1:-1);}route();});
+    app.querySelectorAll("button[data-v]").forEach(b=>b.onclick=()=>{st.venue=b.dataset.v;route();});
+  }catch(e){
+    app.innerHTML=`<h1>${lg[1]}</h1>${tabs(slug,tab)}<div class="err">Dati non disponibili per questo campionato. Lancia l’azione “Aggiorna dati” su GitHub (o <code>python scripts/update_data.py</code>) e ricarica.</div>`;
+  }
+}
+addEventListener("hashchange",route);route();
+</script>
+</body>
+</html>
