@@ -66,6 +66,13 @@ details.card>summary{cursor:pointer;font:700 1.3rem var(--cond)}
 .tl .axis{display:flex;justify-content:space-between;border-top:2px solid var(--line);font-size:.7rem;color:var(--mute)}
 :focus-visible{outline:3px solid var(--yel);outline-offset:2px}
 details.sub{border-top:1px solid var(--line);padding:.45rem 0}details.sub>summary{cursor:pointer;font:700 1.1rem var(--cond)}details.sub>summary small{color:var(--mute);font:400 .8rem 'Barlow',sans-serif}
+.picker a.bol{grid-column:1/-1;background:var(--yel);color:#17210f;flex-direction:column;align-items:flex-start;justify-content:flex-end;min-height:110px;gap:.2rem}
+.picker a.bol small{font:500 .95rem "Barlow",sans-serif}
+.picker a.bol::before{border-color:rgba(0,0,0,.18)}.picker a.bol::after{background:rgba(0,0,0,.18)}
+.slipitem{display:flex;gap:.7rem;align-items:flex-start;padding:.65rem .85rem;border-bottom:1px solid var(--line);background:var(--card);cursor:pointer}
+.slipitem input{margin-top:.35rem;width:1.1rem;height:1.1rem;accent-color:var(--accent)}
+.slipitem b{font:700 1.1rem var(--cond)}
+.slip{position:sticky;bottom:env(safe-area-inset-bottom,0px);margin-top:1rem;padding:.8rem 1rem;background:var(--pitch);color:#fff;border-radius:6px;box-shadow:0 -4px 14px rgba(0,0,0,.18)}
 </style>
 </head>
 <body>
@@ -91,7 +98,7 @@ async function load(slug){
 }
 function home(){
   document.getElementById("upd").textContent="";
-  app.innerHTML=`<h1>Scegli il campionato</h1><div class="picker">${LEAGUES.map(([s,n])=>`<a href="#/${s}/classifica">${n}</a>`).join("")}</div>`;
+  app.innerHTML=`<h1>Scegli il campionato</h1><div class="picker"><a class="bol" href="#/bolletta">Bolletta<small>Le migliori giocate di tutti i campionati</small></a>${LEAGUES.map(([s,n])=>`<a href="#/${s}/classifica">${n}</a>`).join("")}</div>`;
 }
 function classifica(d){
   const rows=d.classifica.map((t,i)=>`<tr><td>${i+1}. ${esc(t.squadra)}</td><td>${t.p}</td><td>${t.w}</td><td>${t.d}</td><td>${t.l}</td><td>${t.gf}:${t.ga}</td><td>${t.gf-t.ga>0?"+":""}${t.gf-t.ga}</td><td><b>${t.pts}</b></td></tr>`).join("");
@@ -182,7 +189,7 @@ function risultatiOld(d){
 }
 async function route(){
   const [,slug,tab="prossima"]=location.hash.split("/");
-  if(!slug)return home();
+  if(!slug)return home();if(slug==="bolletta")return bolletta();
   const lg=LEAGUES.find(l=>l[0]===slug);if(!lg)return home();
   app.innerHTML=`<h1>${lg[1]}</h1>${tabs(slug,tab)}<p class="note">Caricamento…</p>`;
   try{
@@ -350,6 +357,41 @@ function giocate(d,slug){
     <div class="subs"><p class="note" style="margin:.8rem 0 .2rem">Tutte le altre giocate, per tipo (tocca per aprire):</p>${mk}${teams}${fa}${pls}</div></div>`;}).join("");
   return `<p class="note" style="font-size:.95rem"><b>Come si legge.</b> Per ogni partita trovi in alto le migliori giocate, poi le altre divise per tipo da aprire con un tocco. Cerca la stessa giocata sul sito del bookmaker: se la quota è uguale o più alta di quella minima indicata conviene, se è più bassa lascia perdere.</p>${cards}
   <p class="note">Le migliori giocate sono quelle con probabilità stimata tra il 50% e l’80%: sopra l’80% le quote sono troppo basse per contare. Le probabilità vengono da un modello statistico semplice sui dati della stagione: sono un’indicazione, non una certezza, e con poche partite sono molto incerte. Per i giocatori contano solo quelli che giocano spesso (almeno 4 presenze e il 60% delle partite della squadra).</p>`;
+}
+
+function bestOf(d,slug,m){
+  const a=analyze(d,slug,m);if(!a)return[];
+  const M=model(d,m),cand=[];
+  if(M)M.mk.forEach(x=>cand.push({fam:x.fam,label:esc(x.label),pr:x.pr}));
+  if(a.ok)a.picks.forEach(p=>{const i=pickInfo(p);cand.push({fam:"Squadre",label:esc(i.label),pr:i.pr})});
+  playerList(d,m,a).forEach(x=>cand.push({fam:"G:"+x.c,label:`${esc(x.n)} (${esc(x.sq)}): ${x.txt}`,pr:x.pr,why:x.why}));
+  const cnt={};return cand.filter(x=>x.pr>=.5&&x.pr<=.8).sort((x,y)=>y.pr-x.pr).filter(x=>(cnt[x.fam]=(cnt[x.fam]||0)+1)<=2).slice(0,6);
+}
+function slipUpdate(){
+  const c=[...app.querySelectorAll("input[data-pr]")].filter(x=>x.checked),p=c.reduce((s,x)=>s*parseFloat(x.dataset.pr),1),el=document.getElementById("slip");
+  if(el)el.innerHTML=c.length?`<b>${c.length} ${c.length===1?"selezione":"selezioni"}</b> · probabilità che si avverino tutte ${Math.round(p*100)}% · quota totale minima per convenire <b>${fm(1/p,2)}</b>`:"Seleziona le giocate per comporre la bolletta.";
+}
+async function bolletta(){
+  document.getElementById("upd").textContent="";
+  app.innerHTML=`<h1>Bolletta</h1><p class="note">Calcolo le migliori giocate di tutti i campionati…</p>`;
+  const out=[],miss=[];
+  await Promise.all(LEAGUES.map(async([slug,name])=>{try{
+    const d=await load(slug),E=await loadE(slug);d.espn=E;if(E&&E.prossima&&E.prossima.length)d.prossima_giornata=E.prossima;
+    (d.prossima_giornata||[]).forEach(m=>bestOf(d,slug,m).slice(0,2).forEach((x,i)=>out.push({...x,lg:name,m,key:slug+"|"+m.home+"|"+m.away,first:i===0})));
+  }catch(e){miss.push(name)}}));
+  out.sort((x,y)=>y.pr-x.pr);
+  if(!out.length){app.innerHTML=`<h1>Bolletta</h1>${empty("Nessuna giocata disponibile: servono i dati delle prossime partite. Controlla che “Aggiorna dati” su GitHub sia andato a buon fine.")}`;return;}
+  const list=out.slice(0,40),pre=new Set();
+  list.forEach(x=>{if(x.first&&pre.size<4&&![...pre].some(k=>k===x.key))pre.add(x.key)});
+  const used=new Set();
+  app.innerHTML=`<h1>Bolletta</h1>
+  <p class="note" style="font-size:.95rem">Le giocate più probabili di tutti i campionati, dalla più alla meno probabile. Tocca per aggiungerle alla bolletta: puoi sceglierne una sola per partita. In fondo trovi la probabilità che si avverino <b>tutte</b> e la quota totale minima per cui conviene. Più giocate metti, più la probabilità scende: 4 giocate al 75% insieme sono circa il 32%.</p>
+  <div class="wrap">${list.map(x=>{const c=x.first&&pre.has(x.key)&&!used.has(x.key);if(c)used.add(x.key);
+    return `<label class="slipitem"><input type="checkbox" data-pr="${x.pr}" data-k="${esc(x.key)}" ${c?"checked":""}><span><b>${x.label}</b><br><small>${esc(x.lg)} · ${esc(x.m.home)}–${esc(x.m.away)} · ${dt(x.m)} · probabilità ${Math.round(x.pr*100)}% · quota minima ${fm(1/x.pr,2)}${x.why?" · "+esc(x.why):""}</small></span></label>`}).join("")}</div>
+  <div class="slip" id="slip"></div>
+  <p class="note">${miss.length?`Campionati non caricati: ${miss.join(", ")}. `:""}Sono stime statistiche, non certezze: confronta sempre con la quota reale del bookmaker.</p>`;
+  app.querySelectorAll("input[data-pr]").forEach(i=>i.onchange=()=>{if(i.checked)app.querySelectorAll(`input[data-k="${i.dataset.k}"]`).forEach(o=>{if(o!==i)o.checked=false});slipUpdate();});
+  slipUpdate();
 }
 function bindExtra(){
   app.querySelectorAll("th[data-pk]").forEach(th=>th.onclick=()=>{st.psort=th.dataset.pk;route();});
