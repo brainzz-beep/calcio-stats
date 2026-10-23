@@ -73,6 +73,9 @@ details.sub{border-top:1px solid var(--line);padding:.45rem 0}details.sub>summar
 .slipitem input{margin-top:.35rem;width:1.1rem;height:1.1rem;accent-color:var(--accent)}
 .slipitem b{font:700 1.1rem var(--cond)}
 .slip{position:sticky;bottom:env(safe-area-inset-bottom,0px);margin-top:1rem;padding:.8rem 1rem;background:var(--pitch);color:#fff;border-radius:6px;box-shadow:0 -4px 14px rgba(0,0,0,.18)}
+.sel{padding:.6rem 0;border-top:1px solid var(--line);flex:1}.sel b{font:700 1.1rem var(--cond)}
+.card[data-slip] .tot{margin-top:.6rem;padding:.7rem .9rem;background:var(--pitch);color:#fff;border-radius:4px;font-size:.92rem}
+.slipitem .sel{border-top:0;padding:0}
 </style>
 </head>
 <body>
@@ -341,7 +344,7 @@ function giocate(d,slug){
       (a.fac>=1.12?` <b class="w">Arbitro severo</b>: valuta Over ammonizioni sul match; la squadra che ne prende di più è ${esc(hi)}.`:a.fac<=.88?` <b class="f">Arbitro di manica larga</b>: valuta Under ammonizioni.`:" Nessuna spinta netta sulle ammonizioni.")+`</p>`;}
     else note=`<p class="note">Scegli l’arbitro per far entrare le ammonizioni nel calcolo (la designazione esce un paio di giorni prima).</p>`;
     const PL=playerList(d,m,a),cand=[];
-    if(M)M.mk.forEach(x=>cand.push({fam:x.fam,label:esc(x.label),pr:x.pr}));
+    if(M)M.mk.forEach(x=>cand.push({fam:x.fam,label:esc(human(x.fam,x.label,m)),pr:x.pr}));
     if(a.ok)a.picks.forEach(p=>{const i=pickInfo(p);cand.push({fam:"Squadre",label:esc(i.label),pr:i.pr})});
     PL.forEach(x=>cand.push({fam:"G:"+x.c,label:`${esc(x.n)} (${esc(x.sq)}): ${x.txt}`,pr:x.pr,why:x.why}));
     const cnt={},best=cand.filter(x=>x.pr>=.5&&x.pr<=.8).sort((x,y)=>y.pr-x.pr).filter(x=>(cnt[x.fam]=(cnt[x.fam]||0)+1)<=2).slice(0,6);
@@ -359,39 +362,72 @@ function giocate(d,slug){
   <p class="note">Le migliori giocate sono quelle con probabilità stimata tra il 50% e l’80%: sopra l’80% le quote sono troppo basse per contare. Le probabilità vengono da un modello statistico semplice sui dati della stagione: sono un’indicazione, non una certezza, e con poche partite sono molto incerte. Per i giocatori contano solo quelli che giocano spesso (almeno 4 presenze e il 60% delle partite della squadra).</p>`;
 }
 
-function bestOf(d,slug,m){
-  const a=analyze(d,slug,m);if(!a)return[];
-  const M=model(d,m),cand=[];
-  if(M)M.mk.forEach(x=>cand.push({fam:x.fam,label:esc(x.label),pr:x.pr}));
-  if(a.ok)a.picks.forEach(p=>{const i=pickInfo(p);cand.push({fam:"Squadre",label:esc(i.label),pr:i.pr})});
-  playerList(d,m,a).forEach(x=>cand.push({fam:"G:"+x.c,label:`${esc(x.n)} (${esc(x.sq)}): ${x.txt}`,pr:x.pr,why:x.why}));
-  const cnt={};return cand.filter(x=>x.pr>=.5&&x.pr<=.8).sort((x,y)=>y.pr-x.pr).filter(x=>(cnt[x.fam]=(cnt[x.fam]||0)+1)<=2).slice(0,6);
+function human(fam,l,m){
+  const cap=s=>s[0].toUpperCase()+s.slice(1),T=c=>c==="1"?`vince ${m.home}`:c==="2"?`vince ${m.away}`:c==="X"?"pareggio":c==="1X"?`${m.home} non perde`:c==="X2"?`${m.away} non perde`:"non finisce in pareggio";
+  const G=s=>{if(s==="GG")return"segnano entrambe";if(s==="NG")return"almeno una squadra non segna";const x=/^(Over|Under) (\d),5$/.exec(s);return x?(x[1]==="Over"?`almeno ${+x[2]+1} gol`:`al massimo ${x[2]} gol`):s};
+  let x;
+  if(fam==="Esito 1X2"||fam==="Doppia chance"){const c=l.split(" ")[0];return `${cap(T(c))} (${c})`}
+  if(fam==="Over/Under e GG/NG")return /^(GG|NG)$/.test(l)?`${cap(G(l))} (${l})`:`${cap(G(l))} nel match (${l})`;
+  if(/\+ gol$/.test(fam)){const[c,...r]=l.split(" + ");return `${cap(T(c))} e ${G(r.join(" + "))} (${l})`}
+  if(fam==="Multigol"){x=/(\d)-(\d)/.exec(l);return `Tra ${x[1]} e ${x[2]} gol nel match (Multigol ${x[1]}-${x[2]})`}
+  if(fam==="Multigol squadra"){x=/^Multigol (.+) (\d)-(\d)$/.exec(l);return x?`${x[1]} segna tra ${x[2]} e ${x[3]} gol (Multigol ${x[2]}-${x[3]})`:l}
+  if(fam==="Multigol tempo"){x=/^Multigol (1T|2T) (\d)-(\d)$/.exec(l);return x?`Tra ${x[2]} e ${x[3]} gol nel ${x[1]==="1T"?"primo":"secondo"} tempo (Multigol ${x[2]}-${x[3]})`:l}
+  if(fam==="Esito per tempo"){x=/^(\w) nel (1T|2T)$/.exec(l);if(!x)return l;const t=x[2]==="1T"?"primo":"secondo";return x[1]==="X"?`Pareggio nel ${t} tempo`:`${cap(T(x[1]))} nel ${t} tempo`}
+  if(fam==="Almeno un tempo"){const c=l[0];return c==="X"?"Almeno un tempo finisce in pareggio":`${c==="1"?m.home:m.away} vince almeno un tempo`}
+  return l;
 }
-function slipUpdate(){
-  const c=[...app.querySelectorAll("input[data-pr]")].filter(x=>x.checked),p=c.reduce((s,x)=>s*parseFloat(x.dataset.pr),1),el=document.getElementById("slip");
-  if(el)el.innerHTML=c.length?`<b>${c.length} ${c.length===1?"selezione":"selezioni"}</b> · probabilità che si avverino tutte ${Math.round(p*100)}% · quota totale minima per convenire <b>${fm(1/p,2)}</b>`:"Seleziona le giocate per comporre la bolletta.";
+function bestOf(d,slug,m,all){
+  const a=analyze(d,slug,m);if(!a)return[];
+  const M=model(d,m),cand=[],C=(fam,raw,pr,why)=>cand.push({fam,raw,label:esc(raw),pr,why,mk:slug+"|"+m.home+"|"+m.away});
+  if(M)M.mk.forEach(x=>C(x.fam,human(x.fam,x.label,m),x.pr));
+  if(a.ok)a.picks.forEach(p=>{const i=pickInfo(p);C("Squadre",i.label,i.pr)});
+  playerList(d,m,a).forEach(x=>C("G:"+x.c,`${x.n} (${x.sq}): ${x.txt}`,x.pr,x.why));
+  const cnt={};return cand.filter(x=>x.pr>=.5&&x.pr<=.8).sort((x,y)=>y.pr-x.pr).filter(x=>(cnt[x.fam]=(cnt[x.fam]||0)+1)<=(all?4:2)).slice(0,all?60:6);
+}
+const qGet=id=>{try{return localStorage.getItem("q:"+id)||""}catch(e){return""}};
+const qSet=(id,v)=>{try{localStorage.setItem("q:"+id,v)}catch(e){}};
+const parseQ=s=>{const x=parseFloat(String(s).replace(",","."));return x>1?x:NaN};
+function selHtml(x){
+  return `<div class="sel" data-pr="${x.pr}" data-min="${1/x.pr}"><b>${x.label}</b><br><small>${esc(x.lg)} · ${esc(x.m.home)}–${esc(x.m.away)} · ${dt(x.m)} · probabilità ${Math.round(x.pr*100)}% · quota minima ${fm(1/x.pr,2)}${x.why?" · "+esc(x.why):""}</small><br><label><small>Quota del bookmaker: </small><input data-q="${esc(x.id)}" inputmode="decimal" placeholder="es. 1,45" value="${esc(qGet(x.id))}" style="width:5.5rem;font:inherit;padding:.2rem .4rem;border:1px solid var(--line);border-radius:4px;background:var(--card);color:var(--ink)"></label> <small class="verd"></small></div>`;
+}
+function sumHtml(sels){
+  if(!sels.length)return"Seleziona le giocate per comporre la bolletta.";
+  const p=sels.reduce((s,x)=>s*parseFloat(x.dataset.pr),1),qs=sels.map(x=>parseQ(x.querySelector("input[data-q]").value));
+  let t=`<b>${sels.length} ${sels.length===1?"selezione":"selezioni"}</b> · probabilità che si avverino tutte ${Math.round(p*100)}% · quota totale minima per convenire <b>${fm(1/p,2)}</b>`;
+  if(qs.every(q=>!isNaN(q))){const Q=qs.reduce((s,q)=>s*q,1),ev=p*Q-1;t+=`<br>Con le quote inserite la quota totale è <b>${fm(Q,2)}</b>: secondo la stima ${ev>=0?"conviene":"non conviene"} (valore atteso ${ev>=0?"+":""}${fm(ev*100,0)}% su ciò che giochi).`;}
+  return t;
+}
+function refresh(){
+  app.querySelectorAll(".sel").forEach(s=>{const q=parseQ(s.querySelector("input[data-q]").value),min=parseFloat(s.dataset.min),v=s.querySelector(".verd");
+    v.textContent=isNaN(q)?"":q>=min?`✓ Conviene: la quota supera il minimo (${fm(min,2)})`:`✗ Non conviene: servirebbe almeno ${fm(min,2)}`;v.style.color=isNaN(q)?"":q>=min?"var(--accent)":"var(--hot)";});
+  app.querySelectorAll("[data-slip]").forEach(c=>{c.querySelector(".tot").innerHTML=sumHtml([...c.querySelectorAll(".sel")]);});
+  const chk=[...app.querySelectorAll("input[data-k]")].filter(i=>i.checked).map(i=>i.closest(".slipitem").querySelector(".sel")),el=document.getElementById("slip");
+  if(el){el.style.display=chk.length?"":"none";el.innerHTML=sumHtml(chk);}
 }
 async function bolletta(){
   document.getElementById("upd").textContent="";
   app.innerHTML=`<h1>Bolletta</h1><p class="note">Calcolo le migliori giocate di tutti i campionati…</p>`;
-  const out=[],miss=[];
+  const pool=[],miss=[];
   await Promise.all(LEAGUES.map(async([slug,name])=>{try{
     const d=await load(slug),E=await loadE(slug);d.espn=E;if(E&&E.prossima&&E.prossima.length)d.prossima_giornata=E.prossima;
-    (d.prossima_giornata||[]).forEach(m=>bestOf(d,slug,m).slice(0,2).forEach((x,i)=>out.push({...x,lg:name,m,key:slug+"|"+m.home+"|"+m.away,first:i===0})));
+    (d.prossima_giornata||[]).forEach(m=>bestOf(d,slug,m,true).forEach(x=>pool.push({...x,lg:name,m,id:slug+"|"+m.home+"|"+m.away+"|"+x.raw})));
   }catch(e){miss.push(name)}}));
-  out.sort((x,y)=>y.pr-x.pr);
-  if(!out.length){app.innerHTML=`<h1>Bolletta</h1>${empty("Nessuna giocata disponibile: servono i dati delle prossime partite. Controlla che “Aggiorna dati” su GitHub sia andato a buon fine.")}`;return;}
-  const list=out.slice(0,40),pre=new Set();
-  list.forEach(x=>{if(x.first&&pre.size<4&&![...pre].some(k=>k===x.key))pre.add(x.key)});
-  const used=new Set();
+  if(!pool.length){app.innerHTML=`<h1>Bolletta</h1>${empty("Nessuna giocata disponibile: servono i dati delle prossime partite. Controlla che “Aggiorna dati” su GitHub sia andato a buon fine.")}`;return;}
+  const used=new Set(),build=(n,lo,hi)=>{
+    const pick=excl=>{const by={};pool.filter(x=>x.pr>=lo&&x.pr<=hi&&!(excl&&used.has(x.mk))).forEach(x=>{const b=by[x.mk];if(!b||x.pr>b.pr)by[x.mk]=x});
+      const out=[],fc={};Object.values(by).sort((a,b)=>b.pr-a.pr).forEach(x=>{if(out.length<n&&(fc[x.fam]||0)<2){fc[x.fam]=(fc[x.fam]||0)+1;out.push(x)}});return out;};
+    let o=pick(true);if(o.length<n)o=pick(false);o.forEach(x=>used.add(x.mk));return o;};
+  const S=[["Bolletta sicura","3 giocate molto probabili, da partite diverse.",build(3,.70,.80)],["Bolletta equilibrata","4 giocate di probabilità media, da partite diverse.",build(4,.60,.699)],["Bolletta più rischiosa","3 giocate meno probabili: la quota è più alta, ma si avverano meno spesso.",build(3,.50,.599)]].filter(s=>s[2].length);
+  const cnt={},list=[...pool].sort((a,b)=>b.pr-a.pr).filter(x=>(cnt[x.mk]=(cnt[x.mk]||0)+1)<=2).slice(0,40);
   app.innerHTML=`<h1>Bolletta</h1>
-  <p class="note" style="font-size:.95rem">Le giocate più probabili di tutti i campionati, dalla più alla meno probabile. Tocca per aggiungerle alla bolletta: puoi sceglierne una sola per partita. In fondo trovi la probabilità che si avverino <b>tutte</b> e la quota totale minima per cui conviene. Più giocate metti, più la probabilità scende: 4 giocate al 75% insieme sono circa il 32%.</p>
-  <div class="wrap">${list.map(x=>{const c=x.first&&pre.has(x.key)&&!used.has(x.key);if(c)used.add(x.key);
-    return `<label class="slipitem"><input type="checkbox" data-pr="${x.pr}" data-k="${esc(x.key)}" ${c?"checked":""}><span><b>${x.label}</b><br><small>${esc(x.lg)} · ${esc(x.m.home)}–${esc(x.m.away)} · ${dt(x.m)} · probabilità ${Math.round(x.pr*100)}% · quota minima ${fm(1/x.pr,2)}${x.why?" · "+esc(x.why):""}</small></span></label>`}).join("")}</div>
-  <div class="slip" id="slip"></div>
-  <p class="note">${miss.length?`Campionati non caricati: ${miss.join(", ")}. `:""}Sono stime statistiche, non certezze: confronta sempre con la quota reale del bookmaker.</p>`;
-  app.querySelectorAll("input[data-pr]").forEach(i=>i.onchange=()=>{if(i.checked)app.querySelectorAll(`input[data-k="${i.dataset.k}"]`).forEach(o=>{if(o!==i)o.checked=false});slipUpdate();});
-  slipUpdate();
+  <p class="note" style="font-size:.95rem">Tre bollette pronte, ognuna con una sola giocata per partita, scelte tra le prossime partite di tutti i campionati. Scrivi accanto a ogni giocata la quota che vedi dal bookmaker: ti dico subito se conviene. Più giocate metti insieme, più la probabilità che si avverino tutte scende: 4 giocate al 75% insieme sono circa il 32%.</p>
+  ${S.map(([t,ds,L])=>`<div class="card" data-slip><h3>${t}</h3><small>${ds}</small>${L.map(selHtml).join("")}<div class="tot"></div></div>`).join("")}
+  <details class="card"><summary>Componi la tua bolletta (le giocate più probabili)</summary>${list.map(x=>`<div class="slipitem"><input type="checkbox" data-k="${esc(x.mk)}">${selHtml(x)}</div>`).join("")}</details>
+  <div class="slip" id="slip" style="display:none"></div>
+  <p class="note">${miss.length?`Campionati non caricati: ${miss.join(", ")}. `:""}Sono stime statistiche, non certezze: confronta sempre con la quota reale del bookmaker. Le quote che scrivi restano salvate solo su questo browser.</p>`;
+  app.querySelectorAll("input[data-q]").forEach(i=>i.oninput=()=>{qSet(i.dataset.q,i.value);app.querySelectorAll("input[data-q]").forEach(o=>{if(o!==i&&o.dataset.q===i.dataset.q)o.value=i.value});refresh();});
+  app.querySelectorAll("input[data-k]").forEach(i=>i.onchange=()=>{if(i.checked)app.querySelectorAll("input[data-k]").forEach(o=>{if(o!==i&&o.dataset.k===i.dataset.k)o.checked=false});refresh();});
+  refresh();
 }
 function bindExtra(){
   app.querySelectorAll("th[data-pk]").forEach(th=>th.onclick=()=>{st.psort=th.dataset.pk;route();});
