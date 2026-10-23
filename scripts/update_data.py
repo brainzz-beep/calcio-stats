@@ -123,7 +123,7 @@ def build(slug, code, name):
             e["g"] += 1; e["f"] += f1 + f2; e["y"] += y1 + y2; e["r"] += r1 + r2
         matches.append(dict(date=d.isoformat(), home=h, away=a, hg=hg, ag=ag, ref=ref or None,
                             hs=num(row, "HS"), as_=num(row, "AS"), hst=num(row, "HST"), ast=num(row, "AST"),
-                            hc=num(row, "HC"), ac=num(row, "AC"), hf=f1, af=f2, hy=y1, ay=y2, hr=r1, ar=r2))
+                            hc=num(row, "HC"), ac=num(row, "AC"), hf=f1, af=f2, hy=y1, ay=y2, hr=r1, ar=r2, hth=num(row, "HTHG"), hta=num(row, "HTAG")))
     matches.sort(key=lambda m: m["date"])
     squadre = {n: {k: summarize(v) for k, v in t.items()} for n, t in teams.items()}
     classifica = sorted(({"squadra": n, **s["tot"]} for n, s in squadre.items()),
