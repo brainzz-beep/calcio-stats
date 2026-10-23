@@ -1,6 +1,6 @@
 """Dati ESPN: calendario, giornate, marcatori/assist/cartellini con minuto, giocatori, arbitri.
 Scrive data/<campionato>-espn.json. Va lanciato DOPO update_data.py (usa i nomi delle squadre di quel file)."""
-import json, re, time, calendar, datetime, difflib, unicodedata, urllib.request
+import json, re, time, urllib.error, calendar, datetime, difflib, unicodedata, urllib.request
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -25,6 +25,11 @@ def get(url):
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 calcio-stats"})
             with urllib.request.urlopen(req, timeout=30) as r:
                 return json.load(r)
+        except urllib.error.HTTPError as e:
+            err = e
+            if e.code < 500:  # errore della richiesta: riprovare non serve
+                break
+            time.sleep(2)
         except Exception as e:
             err = e
             time.sleep(2)
@@ -126,13 +131,27 @@ def run(slug, lg):
     if outp.exists():
         old = {m["id"]: m for m in json.loads(outp.read_text("utf-8")).get("partite", [])}
     t = datetime.date.today(); y = t.year if t.month >= 7 else t.year - 1
+    season_start = datetime.date(y, 8, 1)
+    played = [m["date"] for m in old.values() if m.get("stato") == "post"]
+    start = max(season_start, datetime.date.fromisoformat(max(played)) - datetime.timedelta(days=5)) if played else season_start
+    end = t + datetime.timedelta(days=10)
+    base = BASE.format(lg=lg) + "scoreboard?dates="
+    fmt = lambda d: d.strftime("%Y%m%d")
+    # prova prima l'intervallo di date; se ESPN lo rifiuta, passa a una richiesta per giorno
+    size = 31 if get(base + f"{fmt(start)}-{fmt(min(end, start + datetime.timedelta(days=6)))}") is not None else 1
     events = {}
-    for yy, mm in [(y, m) for m in range(8, 13)] + [(y + 1, m) for m in range(1, 7)]:
-        last = calendar.monthrange(yy, mm)[1]
-        sb = get(BASE.format(lg=lg) + f"scoreboard?dates={yy}{mm:02d}01-{yy}{mm:02d}{last}&limit=500")
+    d0 = start
+    while d0 <= end:
+        d1 = min(end, d0 + datetime.timedelta(days=size - 1))
+        sb = get(base + (fmt(d0) if size == 1 else f"{fmt(d0)}-{fmt(d1)}"))
         for ev in (sb or {}).get("events", []):
             events[ev["id"]] = ev
+        d0 = d1 + datetime.timedelta(days=1)
     raw = []
+    for m in old.values():  # partite già salvate e fuori dalla finestra appena scaricata
+        if m["id"] not in events:
+            raw.append({"id": m["id"], "dt": datetime.datetime.fromisoformat(m["date"] + "T" + m["time"]).replace(tzinfo=TZ),
+                        "stato": m.get("stato"), "home": m["home"], "away": m["away"], "hg": m["hg"], "ag": m["ag"]})
     for ev in events.values():
         comp = (ev.get("competitions") or [{}])[0]
         cs = {c.get("homeAway"): c for c in comp.get("competitors", [])}
