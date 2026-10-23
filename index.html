@@ -73,7 +73,7 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 const f=v=>v==null?"–":v;
 
 async function load(slug){
-  if(!st.cache[slug]){const r=await fetch(`data/${slug}.json`);if(!r.ok)throw new Error("Dati non disponibili");st.cache[slug]=await r.json();}
+  if(!st.cache[slug]){const r=await fetch(`data/${slug}.json`,{cache:"no-store"});if(!r.ok)throw new Error("Dati non disponibili");st.cache[slug]=await r.json();}
   return st.cache[slug];
 }
 function home(){
@@ -137,7 +137,7 @@ function sw(d,team){const nm=Object.keys(d.squadre),F=[],W=[];
 const forma=(d,t)=>d.partite.filter(m=>m.home===t||m.away===t).slice(-5).map(m=>{const g=m.home===t?m.hg-m.ag:m.ag-m.hg;return g>0?"V":g<0?"P":"N"}).join(" ")||"–";
 const empty=t=>`<div class="err">${t}</div>`;
 function prossima(d,slug){
-  if(!d.prossima_giornata?.length)return empty("Calendario non disponibile: la fonte non ha partite future per questo campionato. Riprova dopo il prossimo aggiornamento.");
+  if(!d.prossima_giornata?.length)return empty(diag(d));
   return d.prossima_giornata.map(m=>{const a=analyze(d,slug,m);if(!a)return`<div class="card"><h3>${esc(m.home)} – ${esc(m.away)}</h3>Squadre non trovate nei dati.</div>`;
     const sh=sw(d,m.home),sa=sw(d,m.away),li=x=>x.length?x.map(t=>`<li>${t}</li>`).join(""):"<li>nessun dato estremo</li>";
     return `<div class="card"><h3>${esc(m.home)} – ${esc(m.away)}</h3><small>${dt(m)}</small>
@@ -146,7 +146,7 @@ function prossima(d,slug){
     <b>Come si incontrano</b>${a.ok?(a.picks.filter(p=>!p.name.startsWith("Ammon")).slice(0,3).map(p=>pickLi(p)).join("")||"<p class='note'>Nessuno scontro netto tra punti di forza e di debolezza.</p>"):"<p class='note'>Poche partite per un confronto affidabile.</p>"}</div>`;}).join("")+`<p class="note">Elenco verde = punti di forza (primi 3 del campionato), arancione = punti deboli (ultimi 3). Forma: ultime 5 partite, dalla più vecchia.</p>`;
 }
 function giocate(d,slug){
-  if(!d.prossima_giornata?.length)return empty("Calendario non disponibile: senza le prossime partite non posso calcolare le giocate.");
+  if(!d.prossima_giornata?.length)return empty(diag(d));
   const all=d.prossima_giornata.map(m=>({m,a:analyze(d,slug,m)})).filter(x=>x.a);
   const top=all.flatMap(x=>x.a.picks).slice().sort((a,b)=>Math.abs(b.edge)-Math.abs(a.edge)).slice(0,8);
   const refs=[...d.arbitri].sort((a,b)=>a.arbitro.localeCompare(b.arbitro));
@@ -187,7 +187,15 @@ async function route(){
   }
 }
 
-async function loadE(slug){const k="e:"+slug;if(!(k in st.cache)){try{const r=await fetch(`data/${slug}-espn.json`);st.cache[k]=r.ok?await r.json():null}catch(e){st.cache[k]=null}}return st.cache[k];}
+function diag(d){
+  const E=d.espn;let w;
+  if(!E)w="il file data/"+(location.hash.split("/")[1]||"")+"-espn.json non esiste: il passaggio ESPN di “Aggiorna dati” non è stato eseguito o è fallito (controlla il log in Actions)";
+  else if(!E.partite||!E.partite.length)w="ESPN non ha restituito nessuna partita per questo campionato";
+  else if(!E.partite.some(m=>m.stato==="pre"))w="ESPN ha restituito "+E.partite.length+" partite ma nessuna futura";
+  else w="ESPN ha partite future ma l’elenco della prossima giornata è vuoto";
+  return "Calendario non disponibile. Motivo: "+w+". Anche la seconda fonte (football-data.co.uk) non ha partite future.";
+}
+async function loadE(slug){const k="e:"+slug;if(!(k in st.cache)){try{const r=await fetch(`data/${slug}-espn.json`,{cache:"no-store"});st.cache[k]=r.ok?await r.json():null}catch(e){st.cache[k]=null}}return st.cache[k];}
 const fmtMin=m=>{const x=/(\d+)(?:\D+(\d+))?/.exec(m||"");return x?+x[1]+(x[2]?+x[2]/100:0):0};
 const IC={gol:"⚽",giallo:"🟨",rosso:"🟥"};
 function matchDetail(d,m){
