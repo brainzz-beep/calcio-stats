@@ -50,6 +50,9 @@ header a.back{font-size:.85rem;font-weight:600;border:1px solid var(--line);padd
 .pk{border-left:3px solid var(--accent);padding-left:.7rem;margin:.5rem 0}.pk.u{border-color:var(--cold)}
 .det{padding:.4rem .8rem .8rem;border-bottom:1px solid var(--line)}.det table{max-width:420px;margin:0 auto}.det td{text-align:center}
 select{font:inherit;padding:.3rem;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink)}
+.tl{margin:.6rem 0}.tl .lane{position:relative;height:1.6rem}.tl i{position:absolute;transform:translateX(-50%);font-style:normal;cursor:default}
+.tl .axis{display:flex;justify-content:space-between;border-top:1px solid var(--line);font-size:.7rem;color:var(--mute)}
+details.card>summary{cursor:pointer;font-size:1.05rem}
 </style>
 </head>
 <body>
@@ -103,7 +106,7 @@ function squadre(d){
   <p class="note">F = fatti, S = subiti/concessi. Verde = miglior valore del campionato, arancione = peggiore. Clicca un’intestazione per ordinare. Con poche partite le medie sono instabili: guarda sempre il numero tra parentesi.</p>`;
 }
 
-const TABS=[["prossima","Prossima giornata"],["giocate","Giocate"],["risultati","Risultati"],["classifica","Classifica"],["squadre","Squadre"]];
+const TABS=[["prossima","Prossima giornata"],["giocate","Giocate"],["risultati","Risultati"],["giocatori","Giocatori"],["classifica","Classifica"],["squadre","Squadre"]];
 function tabs(slug,tab){return `<nav class="tabs">${TABS.map(([k,n])=>`<a href="#/${slug}/${k}" class="${k===tab?"on":""}">${n}</a>`).join("")}</nav>`;}
 const lavg=(d,k)=>{const a=Object.values(d.squadre).map(t=>t.tot[k]).filter(x=>x!=null);return a.reduce((s,x)=>s+x,0)/(a.length||1)};
 const mix=(x,y)=>(x+y)/2, r1=x=>Math.round(x*10)/10, dt=m=>m.date.split("-").reverse().join("/")+(m.time?" "+m.time:"");
@@ -153,13 +156,13 @@ function giocate(d,slug){
     if(a.R){const hi=a.H.y>=a.A.y?m.home:m.away;
       note=`<p>Arbitro <b>${esc(a.R.arbitro)}</b>: ${a.R.gialli} gialli a partita in ${a.R.g} partite (media campionato ${r1(2*lavg(d,"y"))}).`+
       (a.fac>=1.12?` <b class="w">Arbitro severo</b>: valuta Over ammonizioni sul match; la squadra che ne prende di più è ${esc(hi)}.`:a.fac<=.88?` <b class="f">Arbitro di manica larga</b>: valuta Under ammonizioni.`:" Nessuna spinta netta sulle ammonizioni.")+
-      ` <small>Le ammonizioni dei singoli giocatori richiedono dati per giocatore, che non ho ancora.</small></p>`;}
+      `</p>`;}
     else note=`<p class="note">Scegli l’arbitro per far entrare le ammonizioni nel calcolo (la designazione esce un paio di giorni prima).</p>`;
-    return `<div class="card"><h3>${esc(m.home)} – ${esc(m.away)}</h3><small>${dt(m)}</small><p>${sel}</p>${note}${a.ok?(a.picks.map(p=>pickLi(p)).join("")||"<p class='note'>Nessuna giocata con scarto netto.</p>"):"<p class='note'>Meno di 4 partite con statistiche per una delle squadre: nessuna giocata.</p>"}</div>`;}).join("");
+    return `<div class="card"><h3>${esc(m.home)} – ${esc(m.away)}</h3><small>${dt(m)}</small><p>${sel}</p>${note}${gioc(d,m,a)}${a.ok?(a.picks.map(p=>pickLi(p)).join("")||"<p class='note'>Nessuna giocata con scarto netto.</p>"):"<p class='note'>Meno di 4 partite con statistiche per una delle squadre: nessuna giocata.</p>"}</div>`;}).join("");
   return `<h2>Le giocate più nette della giornata</h2><div class="card">${top.map(p=>pickLi(p,1)).join("")||"Nessuna giocata con scarto netto."}</div><h2>Partita per partita</h2>${cards}
   <p class="note">La stima mescola quanto la squadra fa di solito e quanto l’avversaria concede, confrontata con la media del campionato. Sono tendenze statistiche, non probabilità: contano solo se la linea del bookmaker è più bassa (Over) o più alta (Under) della stima. L’effetto dell’arbitro è attenuato quando ha pochi match.</p>`;
 }
-function risultati(d){
+function risultatiOld(d){
   if(!d.ultima_giornata.length)return empty("Nessuna partita ancora giocata.");
   const row=(l,a,b)=>`<tr><td>${a??"–"}</td><td>${l}</td><td>${b??"–"}</td></tr>`;
   return `<div class="wrap">${d.ultima_giornata.map(m=>`<div class="res" data-open style="cursor:pointer"><span class="h">${esc(m.home)}</span><span class="s">${m.hg} – ${m.ag}</span><span>${esc(m.away)}</span><span class="m">${dt(m)} · tocca per le statistiche</span></div>
@@ -171,17 +174,65 @@ async function route(){
   const lg=LEAGUES.find(l=>l[0]===slug);if(!lg)return home();
   app.innerHTML=`<h1>${lg[1]}</h1>${tabs(slug,tab)}<p class="note">Caricamento…</p>`;
   try{
-    const d=await load(slug);
+    const d=await load(slug);const E=await loadE(slug);d.espn=E;if(E&&E.prossima&&E.prossima.length)d.prossima_giornata=E.prossima;
     document.getElementById("upd").textContent=`Stagione ${d.stagione.slice(0,2)}/${d.stagione.slice(2)} · aggiornato ${d.aggiornato.replace("T"," ").slice(0,16)} UTC`;
-    const view={prossima,giocate,risultati,classifica,squadre}[tab]||prossima;
+    const view={prossima,giocate,risultati,giocatori,classifica,squadre}[tab]||prossima;
     app.innerHTML=`<h1>${lg[1]}</h1>${tabs(slug,tab)}${view(d,slug)}`;
     app.querySelectorAll("th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;if(st.sort===k)st.dir*=-1;else{st.sort=k;st.dir=k==="nome"?-1:(COLS.find(c=>c[0]===k)[3]==="low"?1:-1);}route();});
     app.querySelectorAll("button[data-v]").forEach(b=>b.onclick=()=>{st.venue=b.dataset.v;route();});
-    app.querySelectorAll("[data-open]").forEach(el=>el.onclick=()=>{el.nextElementSibling.hidden=!el.nextElementSibling.hidden;});
+    bindExtra();app.querySelectorAll("[data-open]").forEach(el=>el.onclick=()=>{el.nextElementSibling.hidden=!el.nextElementSibling.hidden;});
     app.querySelectorAll("select[data-ref]").forEach(s=>s.onchange=()=>{try{localStorage.setItem(`ref:${slug}:${s.dataset.ref.replace("|",":")}`,s.value)}catch(e){}route();});
   }catch(e){
     app.innerHTML=`<h1>${lg[1]}</h1>${tabs(slug,tab)}<div class="err">Dati non disponibili per questo campionato. Lancia l’azione “Aggiorna dati” su GitHub e ricarica.</div>`;
   }
+}
+
+async function loadE(slug){const k="e:"+slug;if(!(k in st.cache)){try{const r=await fetch(`data/${slug}-espn.json`);st.cache[k]=r.ok?await r.json():null}catch(e){st.cache[k]=null}}return st.cache[k];}
+const fmtMin=m=>{const x=/(\d+)(?:\D+(\d+))?/.exec(m||"");return x?+x[1]+(x[2]?+x[2]/100:0):0};
+const IC={gol:"⚽",giallo:"🟨",rosso:"🟥"};
+function matchDetail(d,m){
+  const fm=d.partite.find(x=>x.date===m.date&&x.home===m.home&&x.away===m.away);
+  const row=(l,a,b)=>`<tr><td>${a??"–"}</td><td>${l}</td><td>${b??"–"}</td></tr>`;
+  const ev=[...(m.eventi||[])].sort((a,b)=>fmtMin(a.min)-fmtMin(b.min));
+  const lane=t=>ev.filter(e=>e.squadra===t).map(e=>`<i title="${esc(e.min+" "+(e.g||"")+(e.a?" (assist "+e.a+")":""))}" style="left:${Math.min(100,fmtMin(e.min)/95*100)}%">${IC[e.tipo]}</i>`).join("");
+  const arb=m.arbitro_n||(m.arbitri&&m.arbitri[0]&&m.arbitri[0].nome)||"non indicato";
+  return `<div class="det"${m.__open?"":" hidden"}>${m.det?`<div class="tl"><small>${esc(m.home)}</small><div class="lane">${lane(m.home)}</div><div class="axis"><span>0'</span><span>45'</span><span>90'</span></div><div class="lane">${lane(m.away)}</div><small>${esc(m.away)}</small></div>
+  <ul>${ev.map(e=>`<li>${esc(e.min)} ${IC[e.tipo]} <b>${esc(e.g||"?")}</b>${e.a?` (assist ${esc(e.a)})`:""}${e.extra?` · ${e.extra}`:""} <small>${esc(e.squadra||"")}</small></li>`).join("")||"<li>Nessun gol né cartellino</li>"}</ul>`:"<p class='note'>Cronaca non ancora disponibile.</p>"}
+  ${fm?`<table>${row("Tiri",fm.hs,fm.as_)}${row("Tiri in porta",fm.hst,fm.ast)}${row("Angoli",fm.hc,fm.ac)}${row("Falli",fm.hf,fm.af)}${row("Gialli",fm.hy,fm.ay)}${row("Rossi",fm.hr,fm.ar)}</table>`:""}
+  <p class="note" style="text-align:center">Arbitro: ${esc(arb)}</p></div>`;
+}
+function risultati(d){
+  const E=d.espn;if(!E||!E.partite)return risultatiOld(d);
+  const pl=E.partite.filter(m=>m.stato==="post");if(!pl.length)return empty("Nessuna partita ancora giocata.");
+  const gs=[...new Set(pl.map(m=>m.g))].sort((a,b)=>b-a);
+  return gs.map((g,i)=>`<details class="card" ${i===0?"open":""}><summary><b>Giornata ${g}</b></summary>${pl.filter(m=>m.g===g).map(m=>{m.__open=i===0;return `<div class="res" data-open style="cursor:pointer"><span class="h">${esc(m.home)}</span><span class="s">${m.hg} – ${m.ag}</span><span>${esc(m.away)}</span><span class="m">${dt(m)}</span></div>${matchDetail(d,m)}`}).join("")}</details>`).join("");
+}
+function giocatori(d){
+  const E=d.espn;if(!E||!E.giocatori||!E.giocatori.length)return empty("Dati dei giocatori non disponibili: nella scheda Actions controlla che “Aggiorna dati” sia verde e che il passaggio ESPN non dia errori.");
+  const K=[["sh","Tiri"],["sot","In porta"],["g","Gol"],["a","Assist"],["fc","Falli F"],["fs","Falli S"],["y","Gialli"],["r","Rossi"]];
+  const sq=[...new Set(E.giocatori.map(p=>p.sq))].sort(),F=st.pteam||"",sk=st.psort||"sh";
+  const v=(p,k)=>st.pg?p[k]/p.p:p[k];
+  const L=E.giocatori.filter(p=>p.p>=2&&(!F||p.sq===F)).sort((a,b)=>v(b,sk)-v(a,sk)).slice(0,100);
+  const fx=x=>st.pg?(Math.round(x*100)/100):x;
+  return `<div class="seg"><select data-pt><option value="">Tutte le squadre</option>${sq.map(s=>`<option ${s===F?"selected":""}>${esc(s)}</option>`).join("")}</select>
+  <button data-pg="0" class="${st.pg?"":"on"}">Totali</button><button data-pg="1" class="${st.pg?"on":""}">A partita</button></div>
+  <div class="wrap"><table><tr><th class="l">Giocatore</th><th class="l">Squadra</th><th>P</th>${K.map(([k,n])=>`<th data-pk="${k}" class="${sk===k?"on":""}">${n}${sk===k?" ↓":""}</th>`).join("")}</tr>
+  ${L.map(p=>`<tr><td class="l">${esc(p.n)}</td><td class="l">${esc(p.sq)}</td><td>${p.p}</td>${K.map(([k])=>`<td>${fx(v(p,k))}</td>`).join("")}</tr>`).join("")}</table></div>
+  <p class="note">Solo giocatori con almeno 2 presenze, primi 100 per la colonna scelta. P = presenze. Clicca un’intestazione per ordinare.</p>`;
+}
+function gioc(d,m,a){
+  const G=d.espn&&d.espn.giocatori;if(!G||!G.length)return"";
+  const top=(t,k,n)=>G.filter(p=>p.sq===t&&p.p>=3&&p[k]>0).sort((x,y)=>y[k]/y.p-x[k]/x.p).slice(0,n);
+  const L=[];
+  a.picks.filter(p=>p.over&&/^Tiri/.test(p.name)).forEach(p=>{const por=p.name.startsWith("Tiri in porta "),t=p.name.slice(por?14:5),k=por?"sot":"sh";
+    top(t,k,2).forEach(x=>L.push(`${esc(x.n)} (${esc(t)}): ${r1(x[k]/x.p)} ${por?"tiri in porta":"tiri"} a partita`));});
+  if(a.picks.some(p=>p.over&&p.name.startsWith("Ammon"))||a.fac>=1.12)[m.home,m.away].forEach(t=>top(t,"y",2).forEach(x=>L.push(`${esc(x.n)} (${esc(t)}): ${x.y} gialli in ${x.p} partite, ${r1(x.fc/x.p)} falli fatti a partita`)));
+  return L.length?`<b>Giocatori da guardare</b><ul>${L.map(x=>`<li>${x}</li>`).join("")}</ul>`:"";
+}
+function bindExtra(){
+  app.querySelectorAll("th[data-pk]").forEach(th=>th.onclick=()=>{st.psort=th.dataset.pk;route();});
+  app.querySelectorAll("select[data-pt]").forEach(s=>s.onchange=()=>{st.pteam=s.value;route();});
+  app.querySelectorAll("button[data-pg]").forEach(b=>b.onclick=()=>{st.pg=b.dataset.pg==="1";route();});
 }
 addEventListener("hashchange",route);route();
 </script>
