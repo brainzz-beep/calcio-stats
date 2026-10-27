@@ -76,6 +76,7 @@ details.sub{border-top:1px solid var(--line);padding:.45rem 0}details.sub>summar
 .sel{padding:.6rem 0;border-top:1px solid var(--line);flex:1}.sel b{font:700 1.1rem var(--cond)}
 .card[data-slip] .tot{margin-top:.6rem;padding:.7rem .9rem;background:var(--pitch);color:#fff;border-radius:4px;font-size:.92rem}
 .slipitem .sel{border-top:0;padding:0}
+.sumrow{padding:.7rem 0;border-top:1px solid var(--line)}.sumrow:first-child{border-top:0;padding-top:0}.sumrow>b{font:700 1.15rem var(--cond)}
 </style>
 </head>
 <body>
@@ -358,7 +359,7 @@ function giocate(d,slug){
     ${M?`<p><small>Gol attesi: ${esc(m.home)} ${fm(M.lh)} – ${fm(M.la)} ${esc(m.away)} · 1 ${M.r[0]}% · X ${M.r[1]}% · 2 ${M.r[2]}% · risultati più probabili: ${M.top.join(", ")}</small></p>`:""}
     <h4 style="margin:.9rem 0 .2rem">Migliori giocate</h4>${best.map(x=>lineHtml(x.label,x.pr,"",x.why?esc(x.why):"")).join("")||"<p class='note'>Nessuna giocata nella fascia 50–80% di probabilità.</p>"}
     <div class="subs"><p class="note" style="margin:.8rem 0 .2rem">Tutte le altre giocate, per tipo (tocca per aprire):</p>${mk}${teams}${fa}${pls}</div></div>`;}).join("");
-  return `<p class="note" style="font-size:.95rem"><b>Come si legge.</b> Per ogni partita trovi in alto le migliori giocate, poi le altre divise per tipo da aprire con un tocco. Cerca la stessa giocata sul sito del bookmaker: se la quota è uguale o più alta di quella minima indicata conviene, se è più bassa lascia perdere.</p>${cards}
+  return `<p class="note" style="font-size:.95rem"><b>Come si legge.</b> Per ogni partita trovi in alto le migliori giocate, poi le altre divise per tipo da aprire con un tocco. Cerca la stessa giocata sul sito del bookmaker: se la quota è uguale o più alta di quella minima indicata conviene, se è più bassa lascia perdere.</p><h2>Le migliori giocate, partita per partita</h2><div class="card">${d.prossima_giornata.map(m=>{const B=bestOf(d,slug,m).slice(0,3);return B.length?`<div class="sumrow"><b>${esc(m.home)} – ${esc(m.away)}</b> <small>${dt(m)}</small>${B.map(x=>`<div class="pk"><b>${x.label}</b><br><small>probabilità ${Math.round(x.pr*100)}% · quota minima ${fm(1/x.pr,2)}</small></div>`).join("")}</div>`:""}).join("")||"<p class='note'>Nessuna giocata nella fascia 50–80% di probabilità.</p>"}</div><h2>Dettaglio di ogni partita</h2>${cards}
   <p class="note">Le migliori giocate sono quelle con probabilità stimata tra il 50% e l’80%: sopra l’80% le quote sono troppo basse per contare. Le probabilità vengono da un modello statistico semplice sui dati della stagione: sono un’indicazione, non una certezza, e con poche partite sono molto incerte. Per i giocatori contano solo quelli che giocano spesso (almeno 4 presenze e il 60% delle partite della squadra).</p>`;
 }
 
